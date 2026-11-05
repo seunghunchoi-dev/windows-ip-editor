@@ -349,21 +349,25 @@ def save_settings():
             if not check_entries_filled(dns1_entries, "기본 DNS 서버"):
                 return
 
-        ip = '.'.join(e.get() for e in ip_entries)
-        subnet = '.'.join(e.get() for e in subnet_entries)
-        gateway = '.'.join(e.get() for e in gateway_entries)
-        dns1 = '.'.join(e.get() for e in dns1_entries)
-        dns2 = join_octets(dns2_entries)
+        # 자동으로 받는 항목은 빈 값으로 저장한다
+        ip = subnet = gateway = dns1 = dns2 = ""
 
         try:
-            ipaddress.IPv4Address(ip)
-            ipaddress.IPv4Address(gateway)
-            if subnet not in VALID_MASKS:
-                messagebox.showerror("입력 오류", f"서브넷 마스크 값이 유효하지 않습니다: {subnet}")
-                return
-            ipaddress.IPv4Address(dns1)
-            if dns2.strip():
-                ipaddress.IPv4Address(dns2)
+            if ip_mode.get() == "manual":
+                ip = '.'.join(e.get() for e in ip_entries)
+                subnet = '.'.join(e.get() for e in subnet_entries)
+                gateway = '.'.join(e.get() for e in gateway_entries)
+                ipaddress.IPv4Address(ip)
+                ipaddress.IPv4Address(gateway)
+                if subnet not in VALID_MASKS:
+                    messagebox.showerror("입력 오류", f"서브넷 마스크 값이 유효하지 않습니다: {subnet}")
+                    return
+            if dns_mode.get() == "manual":
+                dns1 = '.'.join(e.get() for e in dns1_entries)
+                dns2 = join_octets(dns2_entries)
+                ipaddress.IPv4Address(dns1)
+                if dns2.strip():
+                    ipaddress.IPv4Address(dns2)
         except ValueError as ve:
             messagebox.showerror("입력 오류", f"저장 실패 - 입력값 검증 실패: {ve}")
             return
@@ -416,11 +420,23 @@ def load_settings():
                 entries[i].delete(0, tk.END)
                 entries[i].insert(0, parts[i] if i < len(parts) else "")
 
+        # 입력칸이 잠겨 있으면 값을 넣을 수 없으므로 먼저 수동으로 풀어 둔다
+        ip_mode.set("manual")
+        dns_mode.set("manual")
+        toggle_ip_fields()
+        toggle_dns_fields()
+
         fill_entries(ip_val, ip_entries)
         fill_entries(subnet_val, subnet_entries)
         fill_entries(gateway_val, gateway_entries)
         fill_entries(dns1_val, dns1_entries)
         fill_entries(dns2_val, dns2_entries)
+
+        # 값이 없는 항목은 자동으로 받는 설정이다
+        ip_mode.set("manual" if ip_val.strip('. ') else "auto")
+        dns_mode.set("manual" if dns1_val.strip('. ') else "auto")
+        toggle_ip_fields()
+        toggle_dns_fields()
 
         messagebox.showinfo("불러오기 완료", "설정값이 불러와졌습니다.")
     except Exception as e:
