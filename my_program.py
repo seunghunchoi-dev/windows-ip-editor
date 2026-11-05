@@ -4,6 +4,7 @@ import subprocess
 import ipaddress
 import sys
 import os
+import re
 import base64
 from io import BytesIO
 from PIL import Image, ImageTk
@@ -206,15 +207,28 @@ root.iconphoto(False, icon_img)
 root.geometry("550x600")
 
 # ========= 함수 =========
+def decode_output(data):
+    # netsh는 실행 환경에 따라 UTF-8 또는 cp949로 출력한다
+    try:
+        return data.decode('utf-8')
+    except UnicodeDecodeError:
+        return data.decode('cp949', errors='replace')
+
+def run_command(cmd):
+    result = subprocess.run(cmd, capture_output=True)
+    result.stdout = decode_output(result.stdout)
+    result.stderr = decode_output(result.stderr)
+    return result
+
 def get_interfaces():
-    encoding = 'cp949'
-    result = subprocess.run(['netsh', 'interface', 'show', 'interface'],
-                            capture_output=True, text=True, encoding=encoding)
+    result = run_command(['netsh', 'interface', 'show', 'interface'])
     interfaces = []
     for line in result.stdout.splitlines():
         if "Connected" in line or "연결됨" in line or "Disconnected" in line or "연결 끊김" in line:
-            parts = line.split()
-            interfaces.append(parts[-1])
+            # 칸 구분은 공백 두 칸 이상이다. 상태값과 어댑터 이름에는 띄어쓰기가 있을 수 있다
+            parts = re.split(r'\s{2,}', line.strip())
+            if len(parts) >= 4:
+                interfaces.append(parts[-1])
     return interfaces
 
 def toggle_ip_fields():
@@ -243,6 +257,10 @@ def check_entries_filled(entries, label):
             messagebox.showerror("입력 오류", f"{label} 입력칸이 비어 있습니다.")
             return False
     return True
+
+def join_octets(entries):
+    values = [e.get().strip() for e in entries]
+    return '.'.join(values) if any(values) else ''
 
 def validate_and_run():
     interface = combo_interface.get().strip()
@@ -280,7 +298,7 @@ def validate_and_run():
         if not check_entries_filled(dns1_entries, "기본 DNS 서버"):
             return
         dns1 = '.'.join(e.get() for e in dns1_entries)
-        dns2 = '.'.join(e.get() for e in dns2_entries)
+        dns2 = join_octets(dns2_entries)
         try:
             ipaddress.IPv4Address(dns1)
             if dns2.strip():
@@ -295,10 +313,10 @@ def validate_and_run():
         cmds_dns = [['netsh', 'interface', 'ip', 'set', 'dns', interface, 'dhcp']]
 
     try:
-        result_ip = subprocess.run(cmd_ip, capture_output=True, text=True)
+        result_ip = run_command(cmd_ip)
         result_dns = None
         for cmd_dns in cmds_dns:
-            result_dns = subprocess.run(cmd_dns, capture_output=True, text=True)
+            result_dns = run_command(cmd_dns)
             if result_dns.returncode != 0:
                 break
         if result_ip.returncode == 0 and (result_dns is None or result_dns.returncode == 0):
@@ -335,7 +353,7 @@ def save_settings():
         subnet = '.'.join(e.get() for e in subnet_entries)
         gateway = '.'.join(e.get() for e in gateway_entries)
         dns1 = '.'.join(e.get() for e in dns1_entries)
-        dns2 = '.'.join(e.get() for e in dns2_entries)
+        dns2 = join_octets(dns2_entries)
 
         try:
             ipaddress.IPv4Address(ip)
