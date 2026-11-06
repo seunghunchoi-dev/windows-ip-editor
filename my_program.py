@@ -214,6 +214,10 @@ def decode_output(data):
     except UnicodeDecodeError:
         return data.decode('cp949', errors='replace')
 
+def already_dhcp(result):
+    text = (result.stdout + result.stderr).lower()
+    return 'dhcp' in text and ('이미' in text or 'already' in text)
+
 def run_command(cmd):
     result = subprocess.run(cmd, capture_output=True)
     result.stdout = decode_output(result.stdout)
@@ -319,10 +323,12 @@ def validate_and_run():
             result_dns = run_command(cmd_dns)
             if result_dns.returncode != 0:
                 break
-        if result_ip.returncode == 0 and (result_dns is None or result_dns.returncode == 0):
+        # 이미 자동으로 받는 어댑터면 netsh가 실패로 답하지만 원하는 상태가 맞다
+        ip_ok = result_ip.returncode == 0 or (ip_mode.get() == "auto" and already_dhcp(result_ip))
+        if ip_ok and (result_dns is None or result_dns.returncode == 0):
             messagebox.showinfo("성공", "설정 적용 완료")
         else:
-            error_msg = (result_ip.stderr.strip() or result_ip.stdout.strip() or
+            error_msg = ((not ip_ok and (result_ip.stderr.strip() or result_ip.stdout.strip())) or
                          (result_dns.stderr.strip() if result_dns else '') or
                          (result_dns.stdout.strip() if result_dns else '') or
                          "명령어 실패 (cmd 확인)")
